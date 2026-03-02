@@ -9,28 +9,20 @@ type FormMode = "personal" | "reseller" | null;
 
 type PersonalForm = {
   name: string;
-  phone: string; // store digits only
+  phone: string; // digits only (max 10)
   address: string;
 };
 
 type ResellerForm = {
   shopName: string;
   location: string;
-  phone: string; // store digits only
+  phone: string; // digits only (max 10)
 };
 
 const LOCATION_CHIPS = ["ปากน้ำชุมพร", "ปังหวาน", "นาสัก", "ท่ายาง", "ในเมือง"];
 
-/** If user typed 9 digits (missing leading 0), add it. Keep max 10 digits. */
-const normalizeThaiPhoneDigits = (phoneRaw: string) => {
-  let digits = (phoneRaw || "").replace(/\D/g, "");
-  if (digits.length === 9) digits = "0" + digits; // auto add leading 0
-  return digits.slice(0, 10);
-};
-
-/** Format as 0xx-xxx-xxxx (when digits enough). */
-const formatThaiPhone = (digitsRaw: string) => {
-  const digits = normalizeThaiPhoneDigits(digitsRaw);
+const maskedPhone = (value: string) => {
+  const digits = (value || "").replace(/\D/g, "").slice(0, 10);
   if (digits.length <= 3) return digits;
   if (digits.length <= 6) return `${digits.slice(0, 3)}-${digits.slice(3)}`;
   return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`;
@@ -57,10 +49,9 @@ export default function Page() {
     return "น้ำพราวยินดีรับใช้ค่ะ";
   }, [step]);
 
-  // Accept 9 digits (auto-add 0) or 10 digits starting with 0
   const validateThaiPhone = (phoneRaw: string) => {
-    const phone = normalizeThaiPhoneDigits(phoneRaw);
-    return /^0\d{9}$/.test(phone);
+    const phone = (phoneRaw || "").replace(/\D/g, "");
+    return /^0\d{9}$/.test(phone); // 10 digits, starts with 0
   };
 
   const checkAntiSpam = () => {
@@ -92,7 +83,6 @@ export default function Page() {
       });
 
       const data = await res.json().catch(() => ({} as any));
-
       if (!res.ok || !data.ok) {
         throw new Error(data?.error || `ส่งข้อมูลไม่สำเร็จ (${res.status})`);
       }
@@ -109,10 +99,7 @@ export default function Page() {
       checkAntiSpam();
 
       if (!personal.name.trim()) throw new Error("กรุณากรอกชื่อ");
-
-      const phoneDigits = normalizeThaiPhoneDigits(personal.phone);
-      if (!validateThaiPhone(phoneDigits)) throw new Error("กรุณากรอกเบอร์โทรให้ถูกต้อง");
-
+      if (!validateThaiPhone(personal.phone)) throw new Error("กรุณากรอกเบอร์โทร 10 หลัก (ขึ้นต้นด้วย 0)");
       if (!personal.address.trim()) throw new Error("กรุณากรอกที่อยู่");
 
       setLoading(true);
@@ -120,7 +107,7 @@ export default function Page() {
       const payload = {
         type: "ซื้อดื่มเอง",
         name: personal.name.trim(),
-        phone: formatThaiPhone(phoneDigits), // ✅ formatted 0xx-xxx-xxxx
+        phone: personal.phone.replace(/\D/g, ""), // digits only (API can format)
         address: personal.address.trim(),
         source: "praow-form-web",
         createdAt: new Date().toISOString().slice(0, 10),
@@ -148,9 +135,7 @@ export default function Page() {
 
       if (!reseller.shopName.trim()) throw new Error("กรุณากรอกชื่อร้านค้า");
       if (!reseller.location.trim()) throw new Error("กรุณากรอกพิกัดร้านค้า");
-
-      const phoneDigits = normalizeThaiPhoneDigits(reseller.phone);
-      if (!validateThaiPhone(phoneDigits)) throw new Error("กรุณากรอกเบอร์โทรให้ถูกต้อง");
+      if (!validateThaiPhone(reseller.phone)) throw new Error("กรุณากรอกเบอร์โทร 10 หลัก (ขึ้นต้นด้วย 0)");
 
       setLoading(true);
 
@@ -158,7 +143,7 @@ export default function Page() {
         type: "จำหน่าย",
         name: reseller.shopName.trim(),
         location: reseller.location.trim(),
-        phone: formatThaiPhone(phoneDigits), // ✅ formatted 0xx-xxx-xxxx
+        phone: reseller.phone.replace(/\D/g, ""), // digits only (API can format)
         source: "praow-form-web",
         createdAt: new Date().toISOString().slice(0, 10),
       };
@@ -185,16 +170,8 @@ export default function Page() {
 
       <section className="relative w-full max-w-xl rounded-[28px] border border-blue-100 bg-white/95 shadow-soft p-5 md:p-8">
         <header className="text-center mb-5">
-          {/* ✅ Logo */}
           <div className="mx-auto mb-3 h-20 w-20 rounded-2xl bg-white border border-blue-100 shadow-lg overflow-hidden flex items-center justify-center">
-            <Image
-              src="/praow-logo.png"
-              alt="PRAOW"
-              width={80}
-              height={80}
-              className="object-contain"
-              priority
-            />
+            <Image src="/praow-logo.png" alt="PRAOW" width={80} height={80} className="object-contain" priority />
           </div>
 
           <h1 className="text-2xl md:text-3xl font-bold text-praow-700">{title}</h1>
@@ -207,7 +184,6 @@ export default function Page() {
           </div>
         )}
 
-        {/* Honeypot field (hidden from users) */}
         <div className="hidden" aria-hidden="true">
           <label htmlFor="website">Website</label>
           <input
@@ -279,11 +255,11 @@ export default function Page() {
                 <input
                   required
                   inputMode="numeric"
-                  value={formatThaiPhone(personal.phone)}
+                  value={maskedPhone(personal.phone)}
                   onChange={(e) =>
                     setPersonal({
                       ...personal,
-                      phone: normalizeThaiPhoneDigits(e.target.value),
+                      phone: e.target.value.replace(/\D/g, "").slice(0, 10),
                     })
                   }
                   className={inputClass}
@@ -352,11 +328,11 @@ export default function Page() {
                 <input
                   required
                   inputMode="numeric"
-                  value={formatThaiPhone(reseller.phone)}
+                  value={maskedPhone(reseller.phone)}
                   onChange={(e) =>
                     setReseller({
                       ...reseller,
-                      phone: normalizeThaiPhoneDigits(e.target.value),
+                      phone: e.target.value.replace(/\D/g, "").slice(0, 10),
                     })
                   }
                   className={inputClass}

@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -8,17 +9,32 @@ type FormMode = "personal" | "reseller" | null;
 
 type PersonalForm = {
   name: string;
-  phone: string;
+  phone: string; // store digits only
   address: string;
 };
 
 type ResellerForm = {
   shopName: string;
   location: string;
-  phone: string;
+  phone: string; // store digits only
 };
 
 const LOCATION_CHIPS = ["ปากน้ำชุมพร", "ปังหวาน", "นาสัก", "ท่ายาง", "ในเมือง"];
+
+/** If user typed 9 digits (missing leading 0), add it. Keep max 10 digits. */
+const normalizeThaiPhoneDigits = (phoneRaw: string) => {
+  let digits = (phoneRaw || "").replace(/\D/g, "");
+  if (digits.length === 9) digits = "0" + digits; // auto add leading 0
+  return digits.slice(0, 10);
+};
+
+/** Format as 0xx-xxx-xxxx (when digits enough). */
+const formatThaiPhone = (digitsRaw: string) => {
+  const digits = normalizeThaiPhoneDigits(digitsRaw);
+  if (digits.length <= 3) return digits;
+  if (digits.length <= 6) return `${digits.slice(0, 3)}-${digits.slice(3)}`;
+  return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`;
+};
 
 export default function Page() {
   const [step, setStep] = useState<Step>("home");
@@ -41,15 +57,14 @@ export default function Page() {
     return "น้ำพราวยินดีรับใช้ค่ะ";
   }, [step]);
 
+  // Accept 9 digits (auto-add 0) or 10 digits starting with 0
   const validateThaiPhone = (phoneRaw: string) => {
-    const phone = phoneRaw.replace(/\D/g, "");
+    const phone = normalizeThaiPhoneDigits(phoneRaw);
     return /^0\d{9}$/.test(phone);
   };
 
   const checkAntiSpam = () => {
-    if (websiteField.trim()) {
-      throw new Error("Spam detected");
-    }
+    if (websiteField.trim()) throw new Error("Spam detected");
     const now = Date.now();
     const cooldownMs = 4000;
     if (now - lastSubmitRef.current < cooldownMs) {
@@ -64,7 +79,7 @@ export default function Page() {
     setWebsiteField("");
   };
 
-  const sendBoth = async (payload: Record<string, unknown>) => {
+  const sendSubmit = async (payload: Record<string, unknown>) => {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 8000);
 
@@ -76,7 +91,7 @@ export default function Page() {
         signal: controller.signal,
       });
 
-      const data = await res.json().catch(() => ({}));
+      const data = await res.json().catch(() => ({} as any));
 
       if (!res.ok || !data.ok) {
         throw new Error(data?.error || `ส่งข้อมูลไม่สำเร็จ (${res.status})`);
@@ -89,24 +104,29 @@ export default function Page() {
   const onSubmitPersonal = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+
     try {
       checkAntiSpam();
 
       if (!personal.name.trim()) throw new Error("กรุณากรอกชื่อ");
-      if (!validateThaiPhone(personal.phone)) throw new Error("กรุณากรอกเบอร์โทร 10 หลัก (ขึ้นต้นด้วย 0)");
+
+      const phoneDigits = normalizeThaiPhoneDigits(personal.phone);
+      if (!validateThaiPhone(phoneDigits)) throw new Error("กรุณากรอกเบอร์โทรให้ถูกต้อง");
+
       if (!personal.address.trim()) throw new Error("กรุณากรอกที่อยู่");
 
       setLoading(true);
 
       const payload = {
-        type: "personal",
+        type: "ซื้อดื่มเอง",
         name: personal.name.trim(),
-        phone: personal.phone.replace(/\D/g, ""),
+        phone: formatThaiPhone(phoneDigits), // ✅ formatted 0xx-xxx-xxxx
         address: personal.address.trim(),
-        source: "praow-form-web-v2",
+        source: "praow-form-web",
+        createdAt: new Date().toISOString().slice(0, 10),
       };
 
-      await sendBoth(payload);
+      await sendSubmit(payload);
 
       setSuccessText("ขอบคุณค่ะ 💙 ทีมงานจะติดต่อกลับเพื่อยืนยันออเดอร์โดยเร็วที่สุด");
       setMode("personal");
@@ -122,24 +142,28 @@ export default function Page() {
   const onSubmitReseller = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+
     try {
       checkAntiSpam();
 
       if (!reseller.shopName.trim()) throw new Error("กรุณากรอกชื่อร้านค้า");
       if (!reseller.location.trim()) throw new Error("กรุณากรอกพิกัดร้านค้า");
-      if (!validateThaiPhone(reseller.phone)) throw new Error("กรุณากรอกเบอร์โทร 10 หลัก (ขึ้นต้นด้วย 0)");
+
+      const phoneDigits = normalizeThaiPhoneDigits(reseller.phone);
+      if (!validateThaiPhone(phoneDigits)) throw new Error("กรุณากรอกเบอร์โทรให้ถูกต้อง");
 
       setLoading(true);
 
       const payload = {
-        type: "reseller",
+        type: "จำหน่าย",
         name: reseller.shopName.trim(),
         location: reseller.location.trim(),
-        phone: reseller.phone.replace(/\D/g, ""),
-        source: "praow-form-web-v2",
+        phone: formatThaiPhone(phoneDigits), // ✅ formatted 0xx-xxx-xxxx
+        source: "praow-form-web",
+        createdAt: new Date().toISOString().slice(0, 10),
       };
 
-      await sendBoth(payload);
+      await sendSubmit(payload);
 
       setSuccessText("ขอบคุณค่ะ 💙 ฝ่ายขายจะติดต่อกลับเพื่อประเมินพื้นที่และเงื่อนไขการจำหน่าย");
       setMode("reseller");
@@ -152,13 +176,6 @@ export default function Page() {
     }
   };
 
-  const maskedPhone = (value: string) => {
-    const digits = value.replace(/\D/g, "").slice(0, 10);
-    if (digits.length <= 3) return digits;
-    if (digits.length <= 6) return `${digits.slice(0,3)}-${digits.slice(3)}`;
-    return `${digits.slice(0,3)}-${digits.slice(3,6)}-${digits.slice(6)}`;
-  };
-
   return (
     <main className="min-h-screen bg-gradient-to-b from-praow-50 via-white to-white p-4 md:p-8 flex items-center justify-center">
       <div className="absolute inset-0 pointer-events-none opacity-70">
@@ -168,13 +185,20 @@ export default function Page() {
 
       <section className="relative w-full max-w-xl rounded-[28px] border border-blue-100 bg-white/95 shadow-soft p-5 md:p-8">
         <header className="text-center mb-5">
-          <div className="mx-auto mb-3 h-14 w-14 rounded-2xl bg-gradient-to-b from-praow-500 to-praow-700 text-white grid place-items-center text-xl font-bold shadow-lg">
-            พ
+          {/* ✅ Logo */}
+          <div className="mx-auto mb-3 h-20 w-20 rounded-2xl bg-white border border-blue-100 shadow-lg overflow-hidden flex items-center justify-center">
+            <Image
+              src="/praow-logo.png"
+              alt="PRAOW"
+              width={80}
+              height={80}
+              className="object-contain"
+              priority
+            />
           </div>
+
           <h1 className="text-2xl md:text-3xl font-bold text-praow-700">{title}</h1>
-          <p className="text-sm text-slate-500 mt-2">
-            เลือกประเภทการติดต่อและกรอกข้อมูลได้เลยค่ะ
-          </p>
+          <p className="text-sm text-slate-500 mt-2">เลือกประเภทการติดต่อและกรอกข้อมูลได้เลยค่ะ</p>
         </header>
 
         {error && (
@@ -186,7 +210,13 @@ export default function Page() {
         {/* Honeypot field (hidden from users) */}
         <div className="hidden" aria-hidden="true">
           <label htmlFor="website">Website</label>
-          <input id="website" tabIndex={-1} autoComplete="off" value={websiteField} onChange={(e) => setWebsiteField(e.target.value)} />
+          <input
+            id="website"
+            tabIndex={-1}
+            autoComplete="off"
+            value={websiteField}
+            onChange={(e) => setWebsiteField(e.target.value)}
+          />
         </div>
 
         <AnimatePresence mode="wait">
@@ -249,8 +279,13 @@ export default function Page() {
                 <input
                   required
                   inputMode="numeric"
-                  value={maskedPhone(personal.phone)}
-                  onChange={(e) => setPersonal({ ...personal, phone: e.target.value.replace(/\D/g, "").slice(0,10) })}
+                  value={formatThaiPhone(personal.phone)}
+                  onChange={(e) =>
+                    setPersonal({
+                      ...personal,
+                      phone: normalizeThaiPhoneDigits(e.target.value),
+                    })
+                  }
                   className={inputClass}
                   placeholder="0xx-xxx-xxxx"
                 />
@@ -267,10 +302,7 @@ export default function Page() {
                 />
               </Field>
 
-              <ActionButtons
-                loading={loading}
-                onBack={() => { setStep("home"); setError(""); }}
-              />
+              <ActionButtons loading={loading} onBack={() => { setStep("home"); setError(""); }} />
             </motion.form>
           )}
 
@@ -320,18 +352,20 @@ export default function Page() {
                 <input
                   required
                   inputMode="numeric"
-                  value={maskedPhone(reseller.phone)}
-                  onChange={(e) => setReseller({ ...reseller, phone: e.target.value.replace(/\D/g, "").slice(0,10) })}
+                  value={formatThaiPhone(reseller.phone)}
+                  onChange={(e) =>
+                    setReseller({
+                      ...reseller,
+                      phone: normalizeThaiPhoneDigits(e.target.value),
+                    })
+                  }
                   className={inputClass}
                   placeholder="0xx-xxx-xxxx"
                 />
                 <p className="mt-1 text-xs text-slate-500">ตัวอย่าง 081-234-5678</p>
               </Field>
 
-              <ActionButtons
-                loading={loading}
-                onBack={() => { setStep("home"); setError(""); }}
-              />
+              <ActionButtons loading={loading} onBack={() => { setStep("home"); setError(""); }} />
             </motion.form>
           )}
 
@@ -344,9 +378,7 @@ export default function Page() {
               transition={{ duration: 0.2 }}
               className="space-y-4 text-center"
             >
-              <div className="mx-auto h-16 w-16 rounded-full bg-blue-100 grid place-items-center text-2xl">
-                ✅
-              </div>
+              <div className="mx-auto h-16 w-16 rounded-full bg-blue-100 grid place-items-center text-2xl">✅</div>
               <p className="text-slate-700">{successText}</p>
               <div className="flex gap-2">
                 <button
@@ -377,7 +409,7 @@ export default function Page() {
         </AnimatePresence>
 
         <footer className="mt-6 text-center text-xs text-slate-400">
-          PRAOW • Customer intake form (Firebase + Vercel)
+          PRAOW • Customer intake form (Google Sheet + Vercel)
         </footer>
       </section>
     </main>

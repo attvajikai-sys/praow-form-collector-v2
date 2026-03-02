@@ -1,20 +1,35 @@
 import { NextResponse } from "next/server";
 
 type IncomingPayload = {
-  type: "personal" | "reseller";
+  type?: string; // accept both English/Thai
   name?: string;
-  phone?: string;
+  phone?: string; // can be digits or formatted
   address?: string;
   location?: string;
   source?: string;
+  createdAt?: string;
 };
 
-function normalizePhone(phoneRaw: string) {
-  return (phoneRaw || "").replace(/\D/g, "");
+function normalizeType(typeRaw: string): "ซื้อดื่มเอง" | "จำหน่าย" | null {
+  const t = (typeRaw || "").trim().toLowerCase();
+
+  if (t === "personal" || t === "ซื้อดื่มเอง") return "ซื้อดื่มเอง";
+  if (t === "reseller" || t === "จำหน่าย") return "จำหน่าย";
+  return null;
 }
 
-function isThaiPhone(phoneRaw: string) {
-  return /^0\d{9}$/.test(normalizePhone(phoneRaw));
+/** Add leading 0 if missing and return 10 digits max */
+function normalizeThaiPhoneDigits(phoneRaw: string) {
+  let digits = (phoneRaw || "").replace(/\D/g, "");
+  if (digits.length === 9) digits = "0" + digits; // auto add leading 0
+  return digits.slice(0, 10);
+}
+
+/** Return 0xx-xxx-xxxx */
+function formatThaiPhone(phoneRaw: string) {
+  const digits = normalizeThaiPhoneDigits(phoneRaw);
+  if (digits.length !== 10) return digits; // fallback if user typed weird number
+  return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`;
 }
 
 export async function POST(req: Request) {
@@ -29,50 +44,50 @@ export async function POST(req: Request) {
       );
     }
 
-    if (!body?.type || !["personal", "reseller"].includes(body.type)) {
-      return NextResponse.json({ ok: false, error: "Invalid request type" }, { status: 400 });
-    }
-
-    const name = (body.name ?? "").trim();
-    const phone = normalizePhone(body.phone ?? "");
-    const source = (body.source ?? "praow-form-web-v2").trim();
-
-    if (!name) {
-      return NextResponse.json({ ok: false, error: "กรุณากรอกชื่อ" }, { status: 400 });
-    }
-
-    if (!isThaiPhone(phone)) {
+    const typeThai = normalizeType(body?.type ?? "");
+    if (!typeThai) {
       return NextResponse.json(
-        { ok: false, error: "กรุณากรอกเบอร์โทร 10 หลัก (ขึ้นต้นด้วย 0)" },
+        { ok: false, error: `Invalid type: ${body?.type ?? ""}` },
         { status: 400 }
       );
     }
 
-    let address = "";
-    let location = "";
+    const name = (body.name ?? "").trim();
+    const phoneRaw = (body.phone ?? "").trim();
+    const source = (body.source ?? "praow-form-web").trim();
+    const createdAt = (body.createdAt ?? "").trim();
 
-    if (body.type === "personal") {
-      address = (body.address ?? "").trim();
-      if (!address) {
-        return NextResponse.json({ ok: false, error: "กรุณากรอกที่อยู่" }, { status: 400 });
-      }
+    if (!name) return NextResponse.json({ ok: false, error: "กรุณากรอกชื่อ" }, { status: 400 });
+    if (!phoneRaw) return NextResponse.json({ ok: false, error: "กรุณากรอกเบอร์โทร" }, { status: 400 });
+
+    // ✅ Always format for sheet
+    const phone = formatThaiPhone(phoneRaw);
+
+    // Optional strict validation (recommended): must become 10 digits starting with 0
+    const digits = normalizeThaiPhoneDigits(phoneRaw);
+    if (!/^0\d{9}$/.test(digits)) {
+      return NextResponse.json(
+        { ok: false, error: "กรุณากรอกเบอร์โทรให้ถูกต้อง" },
+        { status: 400 }
+      );
     }
 
-    if (body.type === "reseller") {
-      location = (body.location ?? "").trim();
-      if (!location) {
-        return NextResponse.json({ ok: false, error: "กรุณากรอกพิกัดร้านค้า" }, { status: 400 });
-      }
+    if (typeThai === "ซื้อดื่มเอง") {
+      const address = (body.address ?? "").trim();
+      if (!address) return NextResponse.json({ ok: false, error: "กรุณากรอกที่อยู่" }, { status: 400 });
+    } else {
+      const location = (body.location ?? "").trim();
+      if (!location) return NextResponse.json({ ok: false, error: "กรุณากรอกพิกัดร้านค้า" }, { status: 400 });
     }
 
     const forwardPayload = {
-      type: body.type,
+      type: typeThai, // ✅ Thai only
       name,
-      phone,
-      address,
-      location,
+      phone, // ✅ 065-998-2835
+      address: (body.address ?? "").trim(),
+      location: (body.location ?? "").trim(),
       source,
-      createdAt: new Date().toISOString(),
+      createdAt: createdAt || new Date().toISOString().slice(0, 10),
     };
 
     const controller = new AbortController();
@@ -84,7 +99,6 @@ export async function POST(req: Request) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(forwardPayload),
         signal: controller.signal,
-        cache: "no-store",
       });
 
       const text = await res.text();
@@ -103,7 +117,7 @@ export async function POST(req: Request) {
     }
   } catch (err) {
     console.error("Submit route error:", err);
-    const message = err instanceof Error ? err.message : "ส่งข้อมูลไม่สำเร็จ";
-    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+    const msg = err instanceof Error ? err.message : "ส่งข้อมูลไม่สำเร็จ";
+    return NextResponse.json({ ok: false, error: msg }, { status: 500 });
   }
 }

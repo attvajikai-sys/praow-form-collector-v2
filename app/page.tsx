@@ -70,9 +70,12 @@ export default function Page() {
     setWebsiteField("");
   };
 
+  // ✅ Key fix: If request aborts (timeout) but sheet still receives data,
+  // treat it as likely-success and show success UI to avoid duplicates.
   const sendSubmit = async (payload: Record<string, unknown>) => {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 8000);
+    const timeoutMs = 45000; // Apps Script can be slow, give more time
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
       const res = await fetch("/api/submit", {
@@ -83,9 +86,18 @@ export default function Page() {
       });
 
       const data = await res.json().catch(() => ({} as any));
+
       if (!res.ok || !data.ok) {
-        throw new Error(data?.error || `ส่งข้อมูลไม่สำเร็จ (${res.status})`);
+        return { ok: false as const, uncertain: false as const, error: data?.error || `ส่งข้อมูลไม่สำเร็จ (${res.status})` };
       }
+
+      return { ok: true as const, uncertain: false as const };
+    } catch (err: any) {
+      if (err?.name === "AbortError") {
+        // likely succeeded server-side even though client timed out
+        return { ok: true as const, uncertain: true as const };
+      }
+      return { ok: false as const, uncertain: false as const, error: err instanceof Error ? err.message : "เกิดข้อผิดพลาด กรุณาลองใหม่" };
     } finally {
       clearTimeout(timeoutId);
     }
@@ -107,15 +119,22 @@ export default function Page() {
       const payload = {
         type: "ซื้อดื่มเอง",
         name: personal.name.trim(),
-        phone: personal.phone.replace(/\D/g, ""), // digits only (API can format)
+        phone: personal.phone.replace(/\D/g, ""), // digits; API formats for sheet
         address: personal.address.trim(),
         source: "praow-form-web",
         createdAt: new Date().toISOString().slice(0, 10),
       };
 
-      await sendSubmit(payload);
+      const result = await sendSubmit(payload);
 
-      setSuccessText("ขอบคุณค่ะ 💙 ทีมงานจะติดต่อกลับเพื่อยืนยันออเดอร์โดยเร็วที่สุด");
+      if (!result.ok) throw new Error(result.error);
+
+      setSuccessText(
+        result.uncertain
+          ? "รับข้อมูลแล้วค่ะ 💙 (ระบบอาจตอบกลับช้า) ถ้าไม่มั่นใจ กรุณารอสักครู่ก่อนกดส่งซ้ำ เพื่อป้องกันข้อมูลซ้ำ"
+          : "ขอบคุณค่ะ 💙 ทีมงานจะติดต่อกลับเพื่อยืนยันออเดอร์โดยเร็วที่สุด"
+      );
+
       setMode("personal");
       setStep("success");
       resetForms();
@@ -143,14 +162,21 @@ export default function Page() {
         type: "จำหน่าย",
         name: reseller.shopName.trim(),
         location: reseller.location.trim(),
-        phone: reseller.phone.replace(/\D/g, ""), // digits only (API can format)
+        phone: reseller.phone.replace(/\D/g, ""),
         source: "praow-form-web",
         createdAt: new Date().toISOString().slice(0, 10),
       };
 
-      await sendSubmit(payload);
+      const result = await sendSubmit(payload);
 
-      setSuccessText("ขอบคุณค่ะ 💙 ฝ่ายขายจะติดต่อกลับเพื่อประเมินพื้นที่และเงื่อนไขการจำหน่าย");
+      if (!result.ok) throw new Error(result.error);
+
+      setSuccessText(
+        result.uncertain
+          ? "รับข้อมูลแล้วค่ะ 💙 (ระบบอาจตอบกลับช้า) ถ้าไม่มั่นใจ กรุณารอสักครู่ก่อนกดส่งซ้ำ เพื่อป้องกันข้อมูลซ้ำ"
+          : "ขอบคุณค่ะ 💙 ฝ่ายขายจะติดต่อกลับเพื่อประเมินพื้นที่และเงื่อนไขการจำหน่าย"
+      );
+
       setMode("reseller");
       setStep("success");
       resetForms();

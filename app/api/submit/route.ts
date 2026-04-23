@@ -5,6 +5,9 @@ type IncomingPayload = {
   name?: string;
   phone?: string;
   address?: string;
+  tambon?: string;
+  amphoe?: string;
+  province?: string;
   location?: string;
   contactName?: string;
   order?: string;
@@ -79,11 +82,11 @@ export async function POST(req: Request) {
     }
 
     if (typeThai === "ซื้อดื่มเอง") {
-      const address = (body.address ?? "").trim();
-      if (!address) return NextResponse.json({ ok: false, error: "กรุณากรอกที่อยู่" }, { status: 400 });
+      const tambon = (body.tambon ?? "").trim();
+      if (!tambon) return NextResponse.json({ ok: false, error: "กรุณากรอกตำบล" }, { status: 400 });
     } else {
-      const location = (body.location ?? "").trim();
-      if (!location) return NextResponse.json({ ok: false, error: "กรุณากรอกพิกัดร้านค้า" }, { status: 400 });
+      const tambon = (body.tambon ?? "").trim();
+      if (!tambon) return NextResponse.json({ ok: false, error: "กรุณากรอกตำบล" }, { status: 400 });
     }
 
     // ✅ Forward ALL fields — do not reconstruct manually
@@ -92,6 +95,9 @@ export async function POST(req: Request) {
       name,
       phone: formatThaiPhone(phoneRaw),
       address: (body.address ?? "").trim(),
+      tambon: (body.tambon ?? "").trim(),
+      amphoe: (body.amphoe ?? "").trim(),
+      province: (body.province ?? "").trim(),
       location: (body.location ?? "").trim(),
       contactName: (body.contactName ?? "").trim(),
       order: (body.order ?? "").trim(),

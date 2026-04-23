@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
 type Step = "home" | "personal" | "reseller" | "success";
@@ -9,18 +9,22 @@ type FormMode = "personal" | "reseller" | null;
 
 type PersonalForm = {
   name: string;
-  phone: string; // digits only (max 10)
-  address: string;
-  qtySmall: number;   // 350ml
-  qtyMedium: number;  // 600ml
-  qtyLarge: number;   // 1500ml
+  phone: string;
+  tambon: string;
+  amphoe: string;
+  province: string;
+  qtySmall: number;
+  qtyMedium: number;
+  qtyLarge: number;
 };
 
 type ResellerForm = {
   shopName: string;
   contactName: string;
-  location: string;
-  phone: string; // digits only (max 10)
+  tambon: string;
+  amphoe: string;
+  province: string;
+  phone: string;
   qtySmall: number;
   qtyMedium: number;
   qtyLarge: number;
@@ -42,8 +46,16 @@ export default function Page() {
   const [error, setError] = useState("");
   const [successText, setSuccessText] = useState("");
 
-  const [personal, setPersonal] = useState<PersonalForm>({ name: "", phone: "", address: "", qtySmall: 0, qtyMedium: 0, qtyLarge: 0 });
-  const [reseller, setReseller] = useState<ResellerForm>({ shopName: "", contactName: "", location: "", phone: "", qtySmall: 0, qtyMedium: 0, qtyLarge: 0 });
+  const [personal, setPersonal] = useState<PersonalForm>({ name: "", phone: "", tambon: "", amphoe: "", province: "", qtySmall: 0, qtyMedium: 0, qtyLarge: 0 });
+  const [reseller, setReseller] = useState<ResellerForm>({ shopName: "", contactName: "", tambon: "", amphoe: "", province: "", phone: "", qtySmall: 0, qtyMedium: 0, qtyLarge: 0 });
+
+  const [source, setSource] = useState("praow-form-web");
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const src = params.get("src");
+    if (src) setSource(`praow-form-web-${src}`);
+  }, []);
 
   // anti-spam
   const [websiteField, setWebsiteField] = useState(""); // honeypot
@@ -72,8 +84,8 @@ export default function Page() {
   };
 
   const resetForms = () => {
-    setPersonal({ name: "", phone: "", address: "", qtySmall: 0, qtyMedium: 0, qtyLarge: 0 });
-    setReseller({ shopName: "", contactName: "", location: "", phone: "", qtySmall: 0, qtyMedium: 0, qtyLarge: 0 });
+    setPersonal({ name: "", phone: "", tambon: "", amphoe: "", province: "", qtySmall: 0, qtyMedium: 0, qtyLarge: 0 });
+    setReseller({ shopName: "", contactName: "", tambon: "", amphoe: "", province: "", phone: "", qtySmall: 0, qtyMedium: 0, qtyLarge: 0 });
     setWebsiteField("");
   };
 
@@ -119,7 +131,9 @@ export default function Page() {
 
       if (!personal.name.trim()) throw new Error("กรุณากรอกชื่อ");
       if (!validateThaiPhone(personal.phone)) throw new Error("กรุณากรอกเบอร์โทร 10 หลัก (ขึ้นต้นด้วย 0)");
-      if (!personal.address.trim()) throw new Error("กรุณากรอกที่อยู่");
+      if (!personal.tambon.trim()) throw new Error("กรุณากรอกตำบล");
+      if (!personal.amphoe.trim()) throw new Error("กรุณากรอกอำเภอ");
+      if (!personal.province.trim()) throw new Error("กรุณากรอกจังหวัด");
       if (personal.qtySmall + personal.qtyMedium + personal.qtyLarge === 0) throw new Error("กรุณาเลือกสินค้าอย่างน้อย 1 รายการ");
 
       setLoading(true);
@@ -132,10 +146,13 @@ export default function Page() {
       const payload = {
         type: "ซื้อดื่มเอง",
         name: personal.name.trim(),
-        phone: personal.phone.replace(/\D/g, ""), // digits; API formats for sheet
-        address: personal.address.trim(),
+        phone: personal.phone.replace(/\D/g, ""),
+        tambon: personal.tambon.trim(),
+        amphoe: personal.amphoe.trim(),
+        province: personal.province.trim(),
+        address: `${personal.tambon.trim()} ${personal.amphoe.trim()} ${personal.province.trim()}`,
         order: orderParts.join(", "),
-        source: "praow-form-web",
+        source: source,
         createdAt: new Date().toISOString().slice(0, 10),
       };
 
@@ -168,7 +185,9 @@ export default function Page() {
 
       if (!reseller.shopName.trim()) throw new Error("กรุณากรอกชื่อร้านค้า");
       if (!reseller.contactName.trim()) throw new Error("กรุณากรอกชื่อผู้ติดต่อ");
-      if (!reseller.location.trim()) throw new Error("กรุณากรอกพิกัดร้านค้า");
+      if (!reseller.tambon.trim()) throw new Error("กรุณากรอกตำบล");
+      if (!reseller.amphoe.trim()) throw new Error("กรุณากรอกอำเภอ");
+      if (!reseller.province.trim()) throw new Error("กรุณากรอกจังหวัด");
       if (!validateThaiPhone(reseller.phone)) throw new Error("กรุณากรอกเบอร์โทร 10 หลัก (ขึ้นต้นด้วย 0)");
       if (reseller.qtySmall + reseller.qtyMedium + reseller.qtyLarge === 0) throw new Error("กรุณาเลือกสินค้าอย่างน้อย 1 รายการ");
 
@@ -183,10 +202,13 @@ export default function Page() {
         type: "จำหน่าย",
         name: reseller.shopName.trim(),
         contactName: reseller.contactName.trim(),
-        location: reseller.location.trim(),
+        tambon: reseller.tambon.trim(),
+        amphoe: reseller.amphoe.trim(),
+        province: reseller.province.trim(),
+        location: `${reseller.tambon.trim()} ${reseller.amphoe.trim()} ${reseller.province.trim()}`,
         phone: reseller.phone.replace(/\D/g, ""),
         order: resellerOrderParts.join(", "),
-        source: "praow-form-web",
+        source: source,
         createdAt: new Date().toISOString().slice(0, 10),
       };
 
@@ -314,15 +336,38 @@ export default function Page() {
                 <p className="mt-1 text-xs text-slate-500">ตัวอย่าง 081-234-5678</p>
               </Field>
 
-              <Field label="ที่อยู่">
-                <textarea
-                  required
-                  value={personal.address}
-                  onChange={(e) => setPersonal({ ...personal, address: e.target.value })}
-                  className={`${inputClass} min-h-[92px] resize-y`}
-                  placeholder="กรุณาระบุ ตำบล/อำเภอ/จังหวัด"
-                />
-              </Field>
+              <div>
+                <label className="mb-2 block text-sm font-medium text-slate-700">ที่อยู่</label>
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <input
+                      required
+                      value={personal.tambon}
+                      onChange={(e) => setPersonal({ ...personal, tambon: e.target.value })}
+                      className={inputClass}
+                      placeholder="ตำบล"
+                    />
+                  </div>
+                  <div>
+                    <input
+                      required
+                      value={personal.amphoe}
+                      onChange={(e) => setPersonal({ ...personal, amphoe: e.target.value })}
+                      className={inputClass}
+                      placeholder="อำเภอ"
+                    />
+                  </div>
+                  <div>
+                    <input
+                      required
+                      value={personal.province}
+                      onChange={(e) => setPersonal({ ...personal, province: e.target.value })}
+                      className={inputClass}
+                      placeholder="จังหวัด"
+                    />
+                  </div>
+                </div>
+              </div>
 
               <div>
                 <label className="mb-2 block text-sm font-medium text-slate-700">จำนวนสินค้า</label>
@@ -398,15 +443,38 @@ export default function Page() {
                 />
               </Field>
 
-              <Field label="พิกัดร้านค้า">
-                <input
-                  required
-                  value={reseller.location}
-                  onChange={(e) => setReseller({ ...reseller, location: e.target.value })}
-                  className={inputClass}
-                  placeholder="เช่น ปากน้ำชุมพร / ปังหวาน / นาสัก"
-                />
-              </Field>
+              <div>
+                <label className="mb-2 block text-sm font-medium text-slate-700">พิกัดร้านค้า</label>
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <input
+                      required
+                      value={reseller.tambon}
+                      onChange={(e) => setReseller({ ...reseller, tambon: e.target.value })}
+                      className={inputClass}
+                      placeholder="ตำบล"
+                    />
+                  </div>
+                  <div>
+                    <input
+                      required
+                      value={reseller.amphoe}
+                      onChange={(e) => setReseller({ ...reseller, amphoe: e.target.value })}
+                      className={inputClass}
+                      placeholder="อำเภอ"
+                    />
+                  </div>
+                  <div>
+                    <input
+                      required
+                      value={reseller.province}
+                      onChange={(e) => setReseller({ ...reseller, province: e.target.value })}
+                      className={inputClass}
+                      placeholder="จังหวัด"
+                    />
+                  </div>
+                </div>
+              </div>
 
               <Field label="เบอร์โทร">
                 <input

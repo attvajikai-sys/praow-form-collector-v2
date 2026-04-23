@@ -54,7 +54,8 @@ export default function Page() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const src = params.get("src");
-    if (src) setSource(`praow-form-web-${src}`);
+    if (src === "line") setSource("Line");
+    else if (src === "facebook") setSource("Facebook");
   }, []);
 
   // anti-spam
